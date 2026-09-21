@@ -8,6 +8,12 @@ The stack provisions a custom VPC, public subnet, Internet Gateway, route table,
 
 The project also demonstrates stack creation, stack updates, CloudFormation change-set review, controlled update failure, automatic rollback, troubleshooting, and recovery.
 
+## Architecture Diagram
+
+The diagram below shows the AWS infrastructure provisioned and managed using the CloudFormation template.
+
+![AWS Infrastructure Automation using CloudFormation](architecture-diagram.png)
+
 ## Architecture Components
 
 - **Amazon VPC** — Custom VPC (`30.0.0.0/16`) for the project infrastructure.
