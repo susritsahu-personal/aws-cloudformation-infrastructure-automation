@@ -1,0 +1,188 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: >
+  Project 4 - AWS Infrastructure Automation using CloudFormation.
+  Creates a custom VPC, public subnet, networking, security,
+  IAM instance role, and EC2 web server.
+
+Parameters:
+
+  VpcCIDR:
+    Type: String
+    Default: 30.0.0.0/16
+    Description: CIDR block for the VPC
+
+  PublicSubnetCIDR:
+    Type: String
+    Default: 30.0.1.0/24
+    Description: CIDR block for the public subnet
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+    Description: EC2 instance type
+
+  LatestAmiId:
+    Type: AWS::EC2::Image::Id
+    Default: ami-0faf2b6e64f313b65
+    Description: Latest Amazon Linux 2023 AMI
+
+
+Resources:
+
+  Project4VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: Project4-VPC
+
+  Project4InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: Project4-IGW
+
+  Project4AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Project4VPC
+      InternetGatewayId: !Ref Project4InternetGateway
+
+  Project4PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Project4VPC
+      CidrBlock: !Ref PublicSubnetCIDR
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Project4-Public-Subnet
+
+  Project4PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Project4VPC
+      Tags:
+        - Key: Name
+          Value: Project4-Public-RT
+
+  Project4DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: Project4AttachGateway
+    Properties:
+      RouteTableId: !Ref Project4PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref Project4InternetGateway
+
+  Project4PublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Project4PublicSubnet
+      RouteTableId: !Ref Project4PublicRouteTable
+
+  Project4WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTP access to Project 4 web server
+      VpcId: !Ref Project4VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: Project4-Web-SG
+
+  Project4EC2Role:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: Project4-EC2-SSM-Role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+  Project4InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref Project4EC2Role
+
+  Project4WebServer:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref Project4PublicSubnet
+      SecurityGroupIds:
+        - !Ref Project4WebSecurityGroup
+      IamInstanceProfile: !Ref Project4InstanceProfile
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          dnf install -y nginx
+          systemctl enable nginx
+          systemctl start nginx
+          echo "<h1>Project 4 - CloudFormation Web Server</h1>" > /usr/share/nginx/html/index.html
+      Tags:
+        - Key: Name
+          Value: Project4-Web-Server
+
+  Project4ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+
+
+Outputs:
+
+  VpcId:
+    Description: ID of the Project 4 VPC
+    Value: !Ref Project4VPC
+
+  PublicSubnetId:
+    Description: ID of the public subnet
+    Value: !Ref Project4PublicSubnet
+
+  WebServerInstanceId:
+    Description: EC2 web server instance ID
+    Value: !Ref Project4WebServer
+
+  WebServerPublicIP:
+    Description: Public IP address of the EC2 web server
+    Value: !GetAtt Project4WebServer.PublicIp
+
+  WebsiteURL:
+    Description: URL of the Nginx web server
+    Value: !Sub 'http://${Project4WebServer.PublicDnsName}'
+
+  ArtifactsBucketName:
+    Description: Name of the S3 artifacts bucket
+    Value: !Ref Project4ArtifactsBucket  
